@@ -1,32 +1,57 @@
-const express = require('express')
-const app = express()
-const cors = require('cors')
-const port = process.env.PORT || 5000
-require('dotenv').config()
+const express = require('express');
+const app = express();
+const cors = require('cors');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const port = process.env.PORT || 5000;
+require('dotenv').config();
 
+
+// JWT 
+const jwt = require('jsonwebtoken');
 
 // Middleware
-app.use(cors())
+app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => {
-    res.send('Hello ')
-})
-
-app.listen(port, () => {
-    console.log(`Server is runing on port ${port}`)
-})
 
 
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+
+
 const uri = `mongodb+srv://${process.env.User_Name}:${process.env.User_Password}@cluster0.cjesyyc.mongodb.net/?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true, serverApi: ServerApiVersion.v1 });
+
+
+function verifyJWT (req, res, next) {
+    const authoraizetionJWT = req.headers.authoraizetion;
+    
+    if(!authoraizetionJWT){
+        res.status(401).send({message:'Unauthorizeed User status(401)'})
+    }
+
+    const userTocken = authoraizetionJWT.split(' ')[1];
+    jwt.verify(userTocken, process.env.SECREET_TOCKEN, function(err, decoded){
+        if(err){
+            res.status(402).send('unauthroize user status(402)')
+        }
+        req.decoded = decoded;
+        next()
+    })
+}
 
 
 async function run() {
     try{
         const servicesCollection = client.db('geniusCar').collection('services')
         const orderCollection = client.db('geniusCar').collection('order')
+
+
+        // JWT 
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            const jwtTocken = jwt.sign(user, process.env.SECREET_TOCKEN, {expiresIn:'1h'})
+            res.send({jwtTocken})
+            console.log(user)
+        })
 
         // get services data 
         app.get('/services', async (req, res) => {
@@ -35,6 +60,12 @@ async function run() {
             const serviceData = await coursor.toArray()
             res.send(serviceData)
         })
+
+        // Demo Data
+        app.get('/demo', async (req, res) => {
+            res.send('serviceData')
+        })
+
 
         // Get singel Data
         app.get('/services/:id', async (req, res) => {
@@ -49,7 +80,11 @@ async function run() {
 
         // Get Orders
         
-        app.get('/orders', async(req, res) => {
+        app.get('/orders', verifyJWT,  async(req, res) => {
+
+           const userDecoded = req.decoded;
+           console.log('inside order', userDecoded)
+
             let query = {}
             if(req.query.email){
                 query = {
@@ -78,3 +113,13 @@ async function run() {
 }
 
 run().catch(err => console.log(err))
+
+
+app.get('/', (req, res) => {
+    res.send('Hello ')
+})
+
+
+app.listen(port, () => {
+    console.log(`Server is runing on port ${port}`)
+})
